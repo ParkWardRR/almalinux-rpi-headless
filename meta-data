@@ -1,0 +1,12 @@
+# Cloud-init meta-data — CRITICAL
+#
+# The stock AlmaLinux RPi image ships with an EMPTY meta-data file.
+# Without a valid instance-id, cloud-init silently skips processing.
+# This is the #1 cause of headless boot failures.
+#
+# Change instance-id if you need cloud-init to re-run on a
+# previously booted SD card.
+
+instance-id: my-rpi-v1
+local-hostname: my-rpi
+dsmode: local

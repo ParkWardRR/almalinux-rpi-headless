@@ -1,24 +1,10 @@
-# AlmaLinux Raspberry Pi — Static IP network-config
+# DHCP network config (recommended)
 #
-# CRITICAL NOTES:
-#   - Use "gateway4" (NOT "routes: [{to: default, via: ...}]")
-#     AlmaLinux 9's cloud-init silently fails with the newer routes syntax.
-#   - Always include "optional: true" to prevent cloud-init from hanging
-#     indefinitely waiting for the interface during boot.
-#   - This file does NOT exist by default. You must create it manually
-#     in the CIDATA partition alongside user-data.
-#
-# Edit the values below to match your network before copying to CIDATA.
+# Static IP via network-config is unreliable on AlmaLinux.
+# Use DHCP here, then configure static IP via nmcli after SSH access.
 
 version: 2
 ethernets:
   eth0:
-    dhcp4: false
+    dhcp4: true
     optional: true
-    addresses:
-      - 192.168.1.100/24
-    gateway4: 192.168.1.1
-    nameservers:
-      addresses:
-        - 8.8.8.8
-        - 8.8.4.4
