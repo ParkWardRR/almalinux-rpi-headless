@@ -1,177 +1,226 @@
-# AlmaLinux Raspberry Pi 5 — Headless Bootstrap Guide
+# AlmaLinux Raspberry Pi — Headless Cloud-Init Bootstrap
 
-> **TL;DR:** AlmaLinux's Raspberry Pi image has specific cloud-init quirks that silently kill headless setups. This repo contains working, copy-paste-ready config files and documents the three pitfalls that aren't in the official docs.
+[![License: Blue Oak 1.0.0](https://img.shields.io/badge/license-Blue%20Oak%201.0.0-2D6DB4)](https://blueoakcouncil.org/license/1.0.0)
+[![AlmaLinux 9](https://img.shields.io/badge/AlmaLinux-9-354C7A)](https://almalinux.org)
+[![Raspberry Pi 5](https://img.shields.io/badge/Raspberry%20Pi-5-C51A4A)](https://www.raspberrypi.com/products/raspberry-pi-5/)
 
-## The Problem
+Cloud-init configuration templates and documentation for running AlmaLinux headless on **Raspberry Pi 5** (and Pi 4).
 
-You flash AlmaLinux to an SD card for your Raspberry Pi 5, drop in your `user-data` and `network-config` files, plug it in... and nothing. No ping, no SSH, no sign of life. You re-flash, try again, same result. Hours later you're questioning your sanity.
+The official [AlmaLinux Raspberry Pi wiki](https://wiki.almalinux.org/documentation/raspberry-pi.html) covers the basics, but leaves out critical details that cause silent boot failures on headless setups. This repo documents the known pitfalls and provides ready-to-use templates.
 
-**This repo exists because the official wiki is missing critical details**, and most cloud-init guides on the internet are written for Ubuntu/Debian where things "just work."
+> **Status:** Active investigation. These templates represent the best-known configuration based on the official AlmaLinux wiki and community findings. If you discover additional pitfalls or fixes, please open an issue or PR.
 
-## The Three Pitfalls
+---
 
-### 1. Don't Create a Custom User — Modify `almalinux`
+## Known Pitfalls
 
-The AlmaLinux RPi image ships with a **hardcoded default user** called `almalinux`. Its cloud-init initialization sequence depends on this user existing. If your `user-data` file creates a different user (like `myuser`), the init process can silently fail and the system won't complete its first boot properly.
+Cloud-init on AlmaLinux behaves differently than on Ubuntu or Raspberry Pi OS. The following mistakes will silently kill your headless setup with no error output.
 
-**Wrong:**
+### 1. Do Not Create Custom Users — Modify `almalinux`
+
+The AlmaLinux RPi image ships with a hardcoded default user called `almalinux` (password: `almalinux`). The cloud-init initialization depends on this user existing in the `user-data` template.
+
+Creating a different user in `user-data` can break the init sequence. Modify the existing `almalinux` user instead, then create additional users via `runcmd` or after SSH access is established.
+
+<details>
+<summary><b>❌ Incorrect</b> — Creating a custom user</summary>
+
 ```yaml
 users:
-  - name: myuser          # ← This breaks AlmaLinux's init
+  - name: myuser
     groups: wheel
-    ...
+    sudo: ALL=(ALL) NOPASSWD:ALL
 ```
+</details>
 
-**Right:**
+<details>
+<summary><b>✅ Correct</b> — Modifying the default user</summary>
+
 ```yaml
 users:
-  - name: almalinux       # ← Modify the default user instead
+  - name: almalinux
     groups: [ adm, systemd-journal ]
-    ...
+    sudo: [ "ALL=(ALL) NOPASSWD:ALL" ]
 ```
-
-You can always create additional users via `runcmd` after the system boots.
+</details>
 
 ### 2. Use `gateway4`, Not `routes`
 
-AlmaLinux 9's bundled `cloud-init` ships with an older version that doesn't reliably translate the newer `routes` syntax into NetworkManager profiles. The translation silently fails, leaving your network interface dead.
+AlmaLinux 9 bundles a version of cloud-init that does not reliably translate the newer `routes` syntax into NetworkManager connection profiles. The translation fails silently, leaving the interface with no default route.
 
-**Wrong:**
+<details>
+<summary><b>❌ Incorrect</b> — Newer routes syntax</summary>
+
 ```yaml
-version: 2
 ethernets:
   eth0:
     routes:
       - to: default
-        via: 192.168.1.1    # ← Newer syntax, silently ignored
+        via: 192.168.1.1
 ```
+</details>
 
-**Right:**
-```yaml
-version: 2
-ethernets:
-  eth0:
-    gateway4: 192.168.1.1   # ← Older syntax, actually works
-```
-
-### 3. Always Set `optional: true` on `eth0`
-
-Without `optional: true`, cloud-init will hang indefinitely waiting for the interface to come up before proceeding with the rest of initialization. On a headless Pi with no monitor, this is a death sentence — the system appears completely dead.
+<details>
+<summary><b>✅ Correct</b> — Legacy gateway4 syntax</summary>
 
 ```yaml
 ethernets:
   eth0:
-    optional: true           # ← Prevents cloud-init from hanging
+    gateway4: 192.168.1.1
 ```
+</details>
+
+### 3. Always Set `optional: true`
+
+Without this flag, cloud-init blocks indefinitely waiting for the interface during the network stage. On a headless Pi with no display output, the system appears completely dead.
+
+```yaml
+ethernets:
+  eth0:
+    optional: true
+```
+
+### 4. Do Not Use RPi Imager OS Customization
+
+The Raspberry Pi Imager's built-in "OS Customization" (username, Wi-Fi, locale settings) is **not supported** by AlmaLinux. Enabling it [conflicts with AlmaLinux's cloud-init initialization](https://wiki.almalinux.org/documentation/raspberry-pi.html#burn-raspberry-pi-image) and can prevent the system from creating the default user entirely.
+
+Flash the image without customization. Use the `user-data` file for all configuration.
+
+---
 
 ## Quick Start
 
 ### Prerequisites
-- Raspberry Pi 5 (also works on Pi 4)
-- SD card (16GB+)
-- AlmaLinux Raspberry Pi image ([download here](https://wiki.almalinux.org/documentation/raspberry-pi.html))
-- Ethernet cable connected to your network
 
-### Step 1: Flash the Image
+| Requirement | Notes |
+|---|---|
+| Raspberry Pi 5 or 4 | Tested on Pi 5 (8GB) |
+| SD card | 16 GB minimum |
+| Ethernet | Wi-Fi config via cloud-init is not supported on AlmaLinux |
+| AlmaLinux RPi image | [Download](https://wiki.almalinux.org/documentation/raspberry-pi.html#download-image) the latest `.raw.xz` |
 
-Use [Raspberry Pi Imager](https://www.raspberrypi.com/software/), [Fedora Media Writer](https://github.com/FedoraQt/MediaWriter), or `dd`:
+### 1. Flash the Image
 
 ```bash
-# Unmount the disk first
+# macOS
 diskutil unmountDisk /dev/diskN
+xzcat AlmaLinux-9-RaspberryPi-latest.aarch64.raw.xz | sudo dd of=/dev/rdiskN bs=1m status=progress
 
-# Flash (macOS — use rdiskN for speed)
-xzcat AlmaLinux-9-RaspberryPi-latest.aarch64.raw.xz | sudo dd of=/dev/rdiskN bs=1m
+# Linux
+sudo umount /dev/sdX*
+xzcat AlmaLinux-9-RaspberryPi-latest.aarch64.raw.xz | sudo dd of=/dev/sdX bs=1M status=progress
 ```
 
-> ⚠️ **Do NOT use RPi Imager's "OS Customization" feature.** AlmaLinux doesn't support it and it conflicts with cloud-init. Use these config files instead.
+### 2. Mount `CIDATA`
 
-### Step 2: Mount the Boot Partition
-
-After flashing, mount the SD card. A partition named **`CIDATA`** will appear. This is where `config.txt`, `user-data`, and your kernel live.
+After flashing, a FAT partition labeled **`CIDATA`** becomes available. This is the boot partition containing `config.txt` and the default `user-data`.
 
 ```bash
+# macOS
 diskutil mountDisk /dev/diskN
-# The partition mounts at /Volumes/CIDATA
+ls /Volumes/CIDATA/
+
+# Linux
+sudo mount /dev/sdX1 /mnt
+ls /mnt/
 ```
 
-### Step 3: Replace `user-data`
+### 3. Edit and Copy `user-data`
 
-Copy `user-data` from this repo into `/Volumes/CIDATA/`, replacing the default one.
+1. Open [`user-data`](user-data) from this repo
+2. Replace the `passwd` hash — generate yours with:
+   ```bash
+   # Requires mkpasswd (part of whois package on most distros)
+   mkpasswd -m sha-512
+   ```
+3. Replace the SSH public key with your own
+4. Copy to the SD card:
+   ```bash
+   cp user-data /Volumes/CIDATA/user-data   # macOS
+   cp user-data /mnt/user-data              # Linux
+   ```
 
-**Before you copy**, edit the file to:
-1. Replace the example `passwd` hash with your own (generate one with `mkpasswd -m sha-512`)
-2. Replace the example SSH key with your own public key
+### 4. Create `network-config`
+
+This file **does not exist by default**. You must create it.
+
+1. Open [`network-config`](network-config) from this repo
+2. Set your static IP, gateway, and DNS servers
+3. Copy to the SD card alongside `user-data`:
+   ```bash
+   cp network-config /Volumes/CIDATA/network-config   # macOS
+   cp network-config /mnt/network-config              # Linux
+   ```
+
+### 5. Eject, Insert, Boot
 
 ```bash
-cp user-data /Volumes/CIDATA/user-data
-```
-
-### Step 4: Add `network-config`
-
-This file does **not** exist by default. You must create it.
-
-**Edit `network-config`** to match your network:
-- `addresses`: Your desired static IP and subnet
-- `gateway4`: Your router's IP
-- `nameservers`: Your DNS server(s)
-
-```bash
-cp network-config /Volumes/CIDATA/network-config
-```
-
-### Step 5: Eject and Boot
-
-```bash
+# macOS
 diskutil eject /Volumes/CIDATA
+
+# Linux
+sudo umount /mnt
 ```
 
-Insert the SD card into your Pi, connect ethernet, and power on. Wait **~90 seconds** for the first boot (cloud-init takes extra time on initial run).
+Insert the SD card, connect ethernet, and power on. First boot takes **~90 seconds** due to cloud-init initialization.
 
-### Step 6: SSH In
+### 6. Connect
 
 ```bash
 ssh almalinux@<YOUR_STATIC_IP>
 ```
 
-Default password is whatever you set in the `passwd` hash. Your SSH key will also work if you added one.
-
-## File Reference
-
-| File | Purpose |
-|------|---------|
-| `user-data` | Cloud-init user configuration (hostname, SSH, password) |
-| `network-config` | Cloud-init network configuration (static IP, gateway, DNS) |
+---
 
 ## After First Boot
 
-Once you're SSH'd in, you can:
-
 ```bash
+# Update the system
+sudo dnf update -y
+
 # Create your preferred user
 sudo useradd -m -G wheel,adm,systemd-journal -s /bin/bash myuser
 sudo passwd myuser
 
-# Set the hostname (if cloud-init didn't)
-sudo hostnamectl set-hostname myhostname
+# Install common tools
+sudo dnf install -y podman vim tmux htop
 
-# Install packages
-sudo dnf update -y
-sudo dnf install -y podman vim tmux
+# Set hostname (if cloud-init didn't apply it)
+sudo hostnamectl set-hostname myhostname
 ```
 
-## Tested On
+---
 
-- AlmaLinux 9 (latest RPi image as of March 2026)
-- Raspberry Pi 5 (8GB)
-- Headless setup (no HDMI, no keyboard)
+## File Reference
+
+```
+.
+├── README.md          # This guide
+├── LICENSE            # Blue Oak Model License 1.0.0
+├── user-data          # Cloud-init user configuration template
+├── network-config     # Cloud-init static IP network template
+└── TROUBLESHOOTING.md # Diagnostic steps when things go wrong
+```
+
+---
+
+## Troubleshooting
+
+See [TROUBLESHOOTING.md](TROUBLESHOOTING.md) for diagnostic steps when the Pi doesn't respond after boot.
+
+---
 
 ## References
 
 - [AlmaLinux Raspberry Pi Wiki](https://wiki.almalinux.org/documentation/raspberry-pi.html)
-- [Cloud-init Network Config v2 Docs](https://cloudinit.readthedocs.io/en/latest/reference/network-config-format-v2.html)
+- [Cloud-init Network Config v2](https://cloudinit.readthedocs.io/en/latest/reference/network-config-format-v2.html)
 - [Cloud-init NoCloud Datasource](https://cloudinit.readthedocs.io/en/latest/reference/datasources/nocloud.html)
+- [Cloud-init User Data Examples](https://cloudinit.readthedocs.io/en/latest/reference/examples.html)
+
+## Contributing
+
+Issues and pull requests are welcome. If you've gotten AlmaLinux running headless on a Pi with a configuration not covered here, please share your findings.
 
 ## License
 
-MIT
+[Blue Oak Model License 1.0.0](https://blueoakcouncil.org/license/1.0.0) — see [LICENSE](LICENSE).
