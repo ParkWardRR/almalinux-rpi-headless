@@ -1,0 +1,25 @@
+#cloud-config
+#
+# AlmaLinux Raspberry Pi — Headless user-data
+#
+# IMPORTANT: AlmaLinux RPi images ship with a default user called "almalinux".
+# Do NOT create a custom user here — modify "almalinux" instead.
+# Creating a different user can silently break the init sequence.
+#
+# Before using:
+#   1. Replace the passwd hash with your own: mkpasswd -m sha-512
+#   2. Replace the SSH key with your own public key
+#
+
+hostname: myhostname
+ssh_pwauth: true
+
+users:
+  - name: almalinux
+    groups: [ adm, systemd-journal ]
+    sudo: [ "ALL=(ALL) NOPASSWD:ALL" ]
+    lock_passwd: false
+    # Generate your own: mkpasswd -m sha-512
+    passwd: $6$rounds=4096$REPLACE_THIS_HASH$REPLACE_WITH_YOUR_OWN_HASH_FROM_MKPASSWD
+    ssh_authorized_keys:
+      - ssh-ed25519 AAAA_REPLACE_WITH_YOUR_PUBLIC_KEY user@hostname
