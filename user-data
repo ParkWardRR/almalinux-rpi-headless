@@ -21,3 +21,10 @@ users:
 
 chpasswd:
   expire: false
+
+runcmd:
+  - systemctl disable wpa_supplicant || true
+  - systemctl stop wpa_supplicant || true
+  - systemctl disable bluetooth || true
+  - systemctl stop bluetooth || true
+  - rfkill block all || true
