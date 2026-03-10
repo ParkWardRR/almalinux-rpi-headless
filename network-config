@@ -2,9 +2,13 @@
 #
 # Static IP via network-config is unreliable on AlmaLinux.
 # Use DHCP here, then configure static IP via nmcli after SSH access.
+#
+# IMPORTANT: Pi 5 uses "end0" (not "eth0") for the onboard ethernet.
+# Pi 4 uses "eth0". Using the wrong name silently breaks static IP config
+# (DHCP may still work via NetworkManager fallback).
 
 version: 2
 ethernets:
-  eth0:
+  end0:
     dhcp4: true
     optional: true

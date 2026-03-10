@@ -50,24 +50,40 @@ users:
 ```
 </details>
 
-### 3. Use DHCP — Static IP via `network-config` Is Unreliable
+### 3. Pi 5 Ethernet Is `end0`, Not `eth0`
+
+The Raspberry Pi 5 names its onboard ethernet `end0` (not `eth0` like Pi 4). Cloud-init will create a NetworkManager profile targeting whichever name you put in `network-config`. If you use `eth0` on a Pi 5, the profile silently doesn't match any interface — DHCP may still work via NetworkManager's own fallback, but **static IP will silently fail**.
+
+```yaml
+# Pi 5
+ethernets:
+  end0:           # ← correct for Pi 5
+    dhcp4: true
+
+# Pi 4
+ethernets:
+  eth0:           # ← correct for Pi 4
+    dhcp4: true
+```
+
+### 4. Use DHCP — Static IP via `network-config` Is Unreliable
 
 AlmaLinux's cloud-init has known issues translating `network-config` into NetworkManager profiles. Both v1 and v2 formats can silently fail, leaving the interface dead.
 
 **The reliable approach:** Boot with DHCP, then configure static IP manually via `nmcli` after SSH access.
 
-### 4. Use `gateway4`, Not `routes` (If You Must Use Static)
+### 5. Use `gateway4`, Not `routes` (If You Must Use Static)
 
 If you insist on static IP via `network-config`, use the legacy `gateway4` syntax and always include `optional: true`:
 
 ```yaml
 ethernets:
-  eth0:
-    gateway4: 192.168.1.1   # NOT routes: [{to: default, via: ...}]
-    optional: true           # Prevents boot hang
+  end0:                      # "end0" for Pi 5, "eth0" for Pi 4
+    gateway4: 192.168.1.1    # NOT routes: [{to: default, via: ...}]
+    optional: true            # Prevents boot hang
 ```
 
-### 5. Don't Use RPi Imager OS Customization
+### 6. Don't Use RPi Imager OS Customization
 
 The Raspberry Pi Imager's built-in "OS Customization" [conflicts with AlmaLinux's cloud-init](https://wiki.almalinux.org/documentation/raspberry-pi.html#burn-raspberry-pi-image). Flash the image without customization.
 
@@ -81,7 +97,7 @@ The Raspberry Pi Imager's built-in "OS Customization" [conflicts with AlmaLinux'
 |---|---|
 | Raspberry Pi 5 or 4 | Tested on Pi 5 (8GB) |
 | SD card | 16 GB minimum |
-| Ethernet cable | Wi-Fi config via cloud-init is not supported |
+| Ethernet cable | Wi-Fi config via cloud-init is not supported on this image |
 | AlmaLinux RPi image | [Download](https://wiki.almalinux.org/documentation/raspberry-pi.html#download-image) |
 
 ### 1. Flash the Image
@@ -144,6 +160,9 @@ ssh almalinux@<DHCP_IP>
 ## After First Boot
 
 ```bash
+# Fix GPT backup header (the image's partition table doesn't match the SD card size)
+sudo sgdisk -e /dev/mmcblk0
+
 # Update the system
 sudo dnf update -y
 
@@ -152,6 +171,7 @@ sudo useradd -m -G wheel,adm,systemd-journal -s /bin/bash myuser
 sudo passwd myuser
 
 # Set static IP via nmcli (if needed)
+# Find the connection name first: nmcli connection show
 sudo nmcli connection modify "Wired connection 1" \
   ipv4.method manual \
   ipv4.addresses "192.168.1.100/24" \
