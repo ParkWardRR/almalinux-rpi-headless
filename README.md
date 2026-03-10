@@ -263,25 +263,6 @@ Insert SD card, connect ethernet, power on, wait **~90 seconds**.
 ssh almalinux@<DHCP_IP>
 ```
 
-```mermaid
-sequenceDiagram
-    participant You
-    participant SD as SD Card
-    participant Pi as Raspberry Pi
-    participant Net as Network/Router
-
-    You->>SD: Copy meta-data, user-data, network-config
-    You->>Pi: Insert SD card + power on
-    Pi->>Pi: Kernel boot (~5s)
-    Pi->>Pi: cloud-init reads CIDATA (~3s)
-    Pi->>Pi: Create user, set password, add SSH keys
-    Pi->>Net: DHCP request on end0
-    Net->>Pi: IP address assigned
-    Pi->>Pi: SSH server ready (~90s total)
-    You->>Pi: ssh almalinux@IP
-    Pi->>You: Welcome to AlmaLinux!
-```
-
 ---
 
 ## File Reference
@@ -334,29 +315,6 @@ sudo dnf install -y podman vim tmux htop
 > **In plain terms:** This timeline shows exactly what the Pi does in the ~24 seconds of cloud-init processing. The whole boot (including the kernel and other services) takes about 90 seconds, but cloud-init's part is surprisingly fast.
 
 The following timeline was captured from a live AlmaLinux 10.1 / Pi 5 system:
-
-```mermaid
-gantt
-    title Cloud-Init Boot Timeline (Pi 5 — actual measurements)
-    dateFormat X
-    axisFormat %Ss
-
-    section Local Stage
-    Datasource detection + network render : 0, 3
-    Hostname set to 'rubrica'             : 3, 4
-    User + password + SSH keys            : 4, 7
-
-    section Network Stage
-    Network info + route tables           : 11, 12
-
-    section Config Stage
-    Module config                         : 12, 13
-
-    section Final Stage
-    SSH host key generation               : 13, 14
-    Bluetooth/wifi disable (runcmd)       : 14, 15
-    Boot finished                         : 15, 16
-```
 
 <details>
 <summary><b>Raw timing evidence from cloud-init-output.log</b></summary>
